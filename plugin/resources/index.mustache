@@ -4,17 +4,22 @@ try {
 } catch(err) {
 }
 {{/source-map}}
+
+{{#env}}
+process.env.{{key}} = "{{value}}";
+{{/#env}}
+
 require("./{{output-dir}}/goog/bootstrap/nodejs.js");
+
+// It's not clear why this is necessary
+goog.global.CLOSURE_UNCOMPILED_DEFINES = {"cljs.core._STAR_target_STAR_":"nodejs"};
+
 require("./{{output-to}}");
 
-function getCljsFunction(fname) {
-    return eval(fname.replace(/-/g, "_").replace(/\//g, "."));
-}
-
 {{#module}}
-goog.require("{{mangled}}");
+goog.require("{{name}}");
 
 {{#function}}
-exports.{{mangled}} = getCljsFunction("{{name}}");
+exports.{{export}} = {{js-name}};
 {{/function}}
 {{/module}}

@@ -1,140 +1,146 @@
 # cljs-lambda
 
-A Lein plugin, template and small Clojurescript library for exposing functions
-via [AWS Lambda](http://aws.amazon.com/documentation/lambda/).
+[![Build Status](https://travis-ci.org/nervous-systems/cljs-lambda.svg?branch=master)](https://travis-ci.org/nervous-systems/cljs-lambda)
+
+[AWS Lambda](http://aws.amazon.com/documentation/lambda/) is a service which
+allows named functions to be directly invoked (via a client API), have their
+execution triggered by a variety of AWS events (S3 upload, DynamoDB activity,
+etc.) or to serve as HTTP endpoints (via [API
+Gateway](https://aws.amazon.com/api-gateway/)).
+
+This README serves to document a [Leiningen
+plugin](https://github.com/nervous-systems/cljs-lambda/tree/master/plugin)
+(`lein-cljs-lambda`), template (`cljs-lambda`) and [small
+library](https://nervous.io/doc/cljs-lambda/) (`cljs-lambda`) to facilitate the
+writing, deployment & invocation of Clojurescript Lambda functions
+
+## Benefits
 
  - Low instance warmup penalty
- - Specify execution roles and resource limits in project definition
- - Use [core.async](https://github.com/clojure/core.async) for deferred completion
- - Smaller zip files with `:optimizations` `:advanced` support
- - [Blog post/tutorial](https://nervous.io/clojure/clojurescript/aws/lambda/node/lein/2015/07/05/lambda/)
+ - Ability to specify execution roles and resource limits in project definition
+ - Use promises, or asynchronous channels for deferred completion
+ - `:optimizations` `:advanced` support, for smaller zip files*
+ - Utilities for [testing Lambda entrypoints](https://nervous.io/doc/cljs-lambda/testing.html) off of EC2
+ - [Parallel deployments](https://github.com/nervous-systems/cljs-lambda/wiki/Plugin-Reference)
+ - Function publishing/versioning
 
-# Examples
+_N.B. If using advanced compilation alongside Node's standard library,
+something like
+[cljs-nodejs-externs](https://github.com/nervous-systems/cljs-nodejs-externs)
+will be required_
 
-## Get Started
+## Status
+
+This collection of projects is used extensively in production, for important
+pieces of infrastructure.  While efforts are made to ensure backward
+compatibility in the Leiningen plugin, the `cljs-lambda` API is subject to
+breaking changes.
+
+### Recent Changes
+
+- `io.nervous/lein-cljs-lambda` 0.6.0 defaults the runtime of deployed functions
+to `nodejs4.3`, unless this is overriden with `:runtime` in the fn-spec or on
+the command-line.  While your functions will be backwards compatible, your AWS
+CLI installation may require updating to support this change.
+
+# Coordinates
+
+## [Plugin](https://github.com/nervous-systems/cljs-lambda/tree/master/plugin)
+
+[![Clojars
+Project](http://clojars.org/io.nervous/lein-cljs-lambda/latest-version.svg)](http://clojars.org/io.nervous/lein-cljs-lambda)
+
+## [Library](https://github.com/nervous-systems/cljs-lambda/tree/master/cljs-lambda)
+
+[![Clojars Project](http://clojars.org/io.nervous/cljs-lambda/latest-version.svg)](http://clojars.org/io.nervous/cljs-lambda)
+
+# Get Started
 
 ```sh
 $ lein new cljs-lambda my-lambda-project
 $ cd my-lambda-project
 $ lein cljs-lambda default-iam-role
 $ lein cljs-lambda deploy
-$ lein cljs-lambda invoke work-magic '{"variety": "black"}'
+$ lein cljs-lambda invoke work-magic \
+  '{"spell": "delay-promise", "magic-word": "my-lambda-project-token"}'
+...
+$ lein cljs-lambda update-config work-magic :memory-size 256 :timeout 66
 ```
 
-The above requires a recent [Node](https://nodejs.org/) runtime, and a properly-configured (`aws configure`) [AWS CLI](https://github.com/aws/aws-cli) installation.
+# Documentation
+ - [lein-cljs-lambda plugin README](https://github.com/nervous-systems/cljs-lambda/tree/master/plugin) / [reference](https://github.com/nervous-systems/cljs-lambda/wiki/Plugin-Reference)
+ - [cljs-lambda library API docs](https://nervous.io/doc/cljs-lambda/)
 
-Or, put:
+## Older
+ - [Clojurescript/Node on AWS Lambda](https://nervous.io/clojure/clojurescript/aws/lambda/node/lein/2015/07/05/lambda/) (blog post)
+ - [Chasing Chemtrails w/ Clojurescript](https://nervous.io/clojure/clojurescript/node/aws/2015/08/09/chemtrails/) (blog post)
 
-[![Clojars
-Project](http://clojars.org/io.nervous/lein-cljs-lambda/latest-version.svg)](http://clojars.org/io.nervous/lein-cljs-lambda)
+## Other
+- [Example project](https://github.com/nervous-systems/cljs-lambda/tree/master/example/) (generated from template)
 
-In your Clojurescript project's `:plugins` vector.
+# Function Examples
 
-## A Simple Function
+(Using promises)
 
 ```clojure
-(ns cljs-lambda-example.cat
-  (:require [cljs-lambda.util :refer [async-lambda-fn]]))
-
-(def ^:export meow
-  (async-lambda-fn
-   (fn [{meow-target :name} context]
-     (go
-       (<! (async/timeout 1000))
-       {:from "the-cat"
-        :to meow-target
-        :message "I'm  meowing at you"}))))
+(deflambda slowly-attack [{target :name} ctx]
+  (p/delay 1000 {:to target :data "This is an attack"}))
 ```
 
-[And its associated project.clj](https://github.com/nervous-systems/cljs-lambda/blob/master/example/project.clj)
+## AWS Integration With [eulalie](https://github.com/nervous-systems/eulalie)
 
-# The Plugin
+(Using core.async)
 
-## project.clj Excerpt
-See [the example project](https://github.com/nervous-systems/cljs-lambda/blob/master/example/project.clj):
+This function retrieves the name it was invoked under, then attempts to invoke
+itself in order to recursively compute the factorial of its input:
 
 ```clojure
-{:cljs-lambda
- {:cljs-build-id "cljs-lambda-example"
-  :aws-profile "XYZ"
-  :defaults
-  {:role    "arn:aws:iam::151963828411:role/lambda_basic_execution"}
-  :functions
-  [{:name   "dog-bark"
-    :invoke cljs-lambda-example.dog/bark}
-   {:name   "cat-meow"
-    :invoke cljs-lambda-example.cat/meow}]}}
+(deflambda fac [n {:keys [function-name] :as ctx}]
+  (go
+    (if (<= n 1)
+      n
+      (let [[tag result] (<! (lambda/request! (creds/env) function-name (dec n)))]
+        (* n result)))))
 ```
 
-If `:aws-profile` is present, the value will be passed as `--profile` to all invocations of the AWS CLI, otherwise the CLI's default profile will be used.
+See the
+[eulalie.lambda.util](https://github.com/nervous-systems/eulalie/wiki/eulalie.lambda.util)
+documentation for further details.
 
-## Function Configuration
+_N.B. Functions interacting with AWS will require execution under roles with the
+appropriate permissions, and will not execute under the placeholder IAM role
+created by the plugin's `default-iam-role` task._
 
-The following keys are valid for entries in `[:cljs-lambda :functions]`.  The optional keys are listed at the end, alongside their defaults:
+## Further Examples
 
-```clojure
-{:name "the-lambda-function-name"
- :invoke my-cljs-namespace.module/fn
- :role "arn:..."
- [:description "I don't think this field sees much action"
-  :create true
-  :timeout 3 ;; seconds
-  :memory-size 128]} ;; MB
-```
-
-Values in `[:cljs-lambda :defaults]` will be merged into each function map.  These values are written to Lambda on  `deploy`.  Alternatively:
-
-```sh
-$ lein cljs-lambda update-config
-```
-
-Will update the remote (Lambda) configuration of all of the functions listed in the project file.  The `:create` key, defaulting to `true`, determines whether a `create-function` Lambda command will be issued if an attempt is made to `deploy` a not-yet-existing Lambda function.
-
-## cljsbuild
-
-The plugin depends on `cljsbuild`, and assumes there is a `:cljsbuild` section
-in your `project.clj`.  A deployment or build via `cljs-lambda` invokes
-`cljsbuild` - it'll run either the first build in the `:builds` vector, or the
-one identified by `[:cljs-lambda :cljs-build-id]`.
-
- - Source map support will be enabled if the `:source-map` key of the active build
-is `true`.
- - If `:optimizations` is set to `:advanced` on the active build, the zip output will be structured accordingly (i.e. it'll only contain `index.js` and the single compiler output file).
- - With `:advanced`, `*main-cli-fn*` is required to be set (i.e. `(set! *main-cli-fn* identity)`)
-
-## Limitations
-
- - `deploy` means "deploy all functions in this project".  It could be changed pretty easily.
- - I guess we ought to use the docstring for `:description`, if none is supplied.
- - PR's welcome.
-
-# The Library
-
-[![Clojars Project](http://clojars.org/io.nervous/cljs-lambda/latest-version.svg)](http://clojars.org/io.nervous/cljs-lambda)
-
-It's pretty tiny - please see the [example project](https://github.com/nervous-systems/cljs-lambda/tree/master/example/src/cljs_lambda_example), or the project generated by `lein new cljs-lambda`.
+Using SNS & SQS from Clojurescript Lambda functions is covered in [this working
+example](https://github.com/nervous-systems/chemtrack-example/blob/master/lambda/chemtrack/lambda.cljs),
+and the [blog
+post](https://nervous.io/clojure/clojurescript/node/aws/2015/08/09/chemtrails/)
+which discusses it.
 
 # Invoking
 
 ## CLI
 
 ```sh
-$ lein cljs-lambda invoke my-lambda-fn '{"arg1": "value" ...}'
+$ lein cljs-lambda invoke my-lambda-fn '{"arg1": "value" ...}' [:region ...]
 ```
 
 ## Programmatically
 
-If you're interested in programmatically invoking Lambda functions from Clojure/Clojurescript, it's pretty easy with [eulalie](https://github.com/nervous-systems/eulalie):
+If you're interested in programmatically invoking Lambda functions from
+Clojure/Clojurescript, it's pretty easy with
+[eulalie](https://github.com/nervous-systems/eulalie):
 
 ```clojure
-(eulalie.lambda.util/invoke!
+(eulalie.lambda.util/request!
  {:access-key ... :secret-key ... [:token :region etc.]}
  "my-lambda-fn"
- :request-response
  {:arg1 "value" :arg2 ["value"]})
 ```
 
-## License
+# License
 
 cljs-lambda is free and unencumbered public domain software. For more
 information, see http://unlicense.org/ or the accompanying UNLICENSE

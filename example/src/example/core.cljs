@@ -1,4 +1,4 @@
-(ns {{name}}.core
+(ns example.core
   (:require [cljs-lambda.util :as lambda]
             [cljs-lambda.context :as ctx]
             [cljs-lambda.macros :refer-macros [deflambda]]

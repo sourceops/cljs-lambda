@@ -1,39 +1,38 @@
-(defproject io.nervous/cljs-lambda-example "0.1.0-SNAPSHOT"
-  :dependencies [[org.clojure/clojure "1.7.0"]
-                 [org.clojure/clojurescript "0.0-3308"]
-                 [io.nervous/cljs-lambda "0.1.2"]]
-  :plugins [[lein-cljsbuild "1.0.6"]
-            [lein-npm "0.5.0"]
-            [io.nervous/lein-cljs-lambda "0.2.1"]]
-  :node-dependencies [[source-map-support "0.2.8"]]
+(defproject example "0.1.0-SNAPSHOT"
+  :description "FIXME"
+  :url "http://please.FIXME"
+  :dependencies [[org.clojure/clojure       "1.8.0"]
+                 [org.clojure/clojurescript "1.8.34"]
+                 [org.clojure/core.async    "0.2.374"]
+                 [io.nervous/cljs-lambda    "0.3.2"]]
+  :plugins [[lein-cljsbuild "1.1.3"]
+            [lein-npm       "0.6.0"]
+            [lein-doo       "0.1.7-SNAPSHOT"]
+            [io.nervous/lein-cljs-lambda "0.6.0"]]
+  :npm {:dependencies [[source-map-support "0.4.0"]]}
   :source-paths ["src"]
   :cljs-lambda
-  {:cljs-build-id "cljs-lambda-example"
-   :defaults
-   {:role   "arn:aws:iam::151963828411:role/lambda_basic_execution"
-    :create true}
+  {:env {:set     {"CLJS_LAMBDA_EXAMPLE" "Yes"}
+         :capture #{"USER" #"^TEST_"}}
+   :defaults      {:role "FIXME"}
+   :resource-dirs ["static"]
    :functions
-   [{:name   "dog-bark"
-     :invoke cljs-lambda-example.dog/bark}
-    {:name   "cat-meow"
-     :invoke cljs-lambda-example.cat/meow}]}
+   [{:name   "work-magic"
+     :invoke example.core/work-magic}]}
   :cljsbuild
-  {:builds [{:id "cljs-lambda-example"
+  {:builds [{:id "example"
              :source-paths ["src"]
-             :compiler {:output-to "target/none/cljs_lambda_example.js"
-                        :output-dir "target/none"
-                        :target :nodejs
+             :compiler {:output-to     "target/example/example.js"
+                        :output-dir    "target/example"
+                        :source-map    "target/example/example.js.map"
+                        :target        :nodejs
+                        :language-in   :ecmascript5
+                        :optimizations :advanced}}
+            {:id "example-test"
+             :source-paths ["src" "test"]
+             :compiler {:output-to     "target/example-test/example.js"
+                        :output-dir    "target/example-test"
+                        :target        :nodejs
+                        :language-in   :ecmascript5
                         :optimizations :none
-                        :source-map true}}
-            {:id "cljs-lambda-example-adv"
-             :source-paths ["src"]
-             :compiler {:output-to "target/adv/cljs_lambda_example.js"
-                        :output-dir "target/adv"
-                        :target :nodejs
-                        :optimizations :advanced}}]}
-  :profiles
-  {:dev {:dependencies
-         [[com.cemerick/piggieback "0.2.1"]
-          [org.clojure/tools.nrepl "0.2.10"]]
-         :repl-options {:nrepl-middleware
-                        [cemerick.piggieback/wrap-cljs-repl]}}})
+                        :main          example.test-runner}}]})
